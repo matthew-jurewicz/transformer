@@ -3,14 +3,19 @@ from keras.layers import (
     TimeDistributed, 
     Dense, 
     Concatenate, 
-    Conv1D
+    Conv1D, 
+    Add, 
+    BatchNormalization
 )
+import numpy as np
 
 
 def scaled_dot_prod_attention(q, k, v):
-    d_k = k.output_shape[0]
+    #k -> [batch_size, seq_len, d_k]
+    d_k = k.output_shape[-1]
+    k_T = K.permute_dimensions(k, pattern=[0, 2, 1])
     
-    return K.dot(K.softmax(K.dot(q, K.transpose(k)) / K.sqrt(d_k)), v)
+    return K.batch_dot(K.softmax(K.batch_dot(q, k_T) / K.sqrt(d_k)), v)
 
 
 def multi_head_attention(q, k, v, d_model, h=8):
@@ -32,9 +37,32 @@ def multi_head_attention(q, k, v, d_model, h=8):
 
 
 def feed_forward_net(x, d_ff=2048):
-    d_model = x.output_shape[0]
+    #x -> [batch_size, seq_len, d_model]
+    d_model = x.output_shape[-1]
 
     transform1 = Conv1D(filters=d_ff, kernel_size=1, activation='relu')(x)
     transform2 = Conv1D(filters=d_model, kernel_size=1, activation='linear')(transform1)
 
     return transform2
+
+
+def get_pos_encoding(d_model, seq_len):
+    pos = np.arange(d_model)
+
+    return [np.sin(pos / (10000 ** (2 * i / d_model))) if i % 2 == 0 else np.cos(pos / (10000 ** (2 * i / d_model))) 
+        for i in range(seq_len)]
+
+
+def encoder(x):
+    d_model = x.output_shape[-1]
+    mha = multi_head_attention(x, x, x, d_model)
+
+    add = Add()([mha, x])
+    norm = BatchNormalization()(add)
+
+    ffn = feed_forward_net(norm)
+
+    add = Add()([ffn, norm])
+    norm = BatchNormalization()(add)
+
+    return norm
