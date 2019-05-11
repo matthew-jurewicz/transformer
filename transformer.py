@@ -1,8 +1,9 @@
 import keras.backend as K
 from keras.layers import (
-    Dense, 
     TimeDistributed, 
-    Concatenate
+    Dense, 
+    Concatenate, 
+    Conv1D
 )
 
 
@@ -12,7 +13,7 @@ def scaled_dot_prod_attention(q, k, v):
     return K.dot(K.softmax(K.dot(q, K.transpose(k)) / K.sqrt(d_k)), v)
 
 
-def multi_head_attention(q, k, v, d_model=512, h=8):
+def multi_head_attention(q, k, v, d_model, h=8):
     d_k = d_v = d_model // h
 
     heads = []
@@ -28,3 +29,12 @@ def multi_head_attention(q, k, v, d_model=512, h=8):
     proj = TimeDistributed(Dense(d_model, activation='linear', use_bias=False)(concat))
 
     return proj
+
+
+def feed_forward_net(x, d_ff=2048):
+    d_model = x.output_shape[0]
+
+    transform1 = Conv1D(filters=d_ff, kernel_size=1, activation='relu')(x)
+    transform2 = Conv1D(filters=d_model, kernel_size=1, activation='linear')(transform1)
+
+    return transform2
