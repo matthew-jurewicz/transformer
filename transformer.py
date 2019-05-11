@@ -1,5 +1,6 @@
 import keras.backend as K
 from keras.layers import (
+    Lambda, 
     TimeDistributed, 
     Dense, 
     Concatenate, 
@@ -14,11 +15,13 @@ def scaled_dot_prod_attention(q, k, v):
     #k -> [batch_size, seq_len, d_k]
     d_k = k.output_shape[-1]
     k_T = K.permute_dimensions(k, pattern=[0, 2, 1])
+
+    attention = Lambda(lambda qv: K.batch_dot(K.softmax(K.batch_dot(qv[0], k_T) / K.sqrt(d_k)), qv[1]))
     
-    return K.batch_dot(K.softmax(K.batch_dot(q, k_T) / K.sqrt(d_k)), v)
+    return attention([q, v])
 
 
-def multi_head_attention(q, k, v, d_model, h=8):
+def multi_head_attention(q, k, v, d_model, h):
     d_k = d_v = d_model // h
 
     heads = []
@@ -36,7 +39,7 @@ def multi_head_attention(q, k, v, d_model, h=8):
     return proj
 
 
-def feed_forward_net(x, d_ff=2048):
+def feed_forward_net(x, d_ff):
     #x -> [batch_size, seq_len, d_model]
     d_model = x.output_shape[-1]
 
@@ -53,16 +56,22 @@ def get_pos_encoding(d_model, seq_len):
         for i in range(seq_len)]
 
 
-def encoder(x):
+def encoder(x, h, d_ff):
+    #x -> [batch_size, seq_len, d_model]
     d_model = x.output_shape[-1]
-    mha = multi_head_attention(x, x, x, d_model)
+    mha = multi_head_attention(x, x, x, d_model, h)
 
     add = Add()([mha, x])
     norm = BatchNormalization()(add)
 
-    ffn = feed_forward_net(norm)
+    ffn = feed_forward_net(norm, d_ff)
 
     add = Add()([ffn, norm])
     norm = BatchNormalization()(add)
 
     return norm
+
+
+def decoder(x, h, d_ff):
+    #x -> [batch_size, seq_len, d_model]
+    d_model = x.output_shape[-1]
